@@ -1,33 +1,156 @@
-import pandas as pd
 import joblib
-from processing_Piplan import
- #test data churuk of the dataset
-test_batch = pd.read_csv(r"Data_Processed/test_data.csv")
-new_data = pd.read_csv(r"Data_Processed/RealTime_sample.csv")
 
-# function for batch inference
-def predict_Batch(test_batch):
+from Piplan_Classes import *
+import logging
+import sys
+# Setup logging configuration
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-    model = joblib.load("isolation_forest_model.joblib")
+sys.modules['__main__'].ColumnDropper = ColumnDropper
+sys.modules['__main__'].Parse_data = Parse_data
+sys.modules['__main__'].Melt_data = Melt_data
+sys.modules['__main__'].Drop_na = Drop_na
+sys.modules['__main__'].Extract_machine_id = Extract_machine_id
+sys.modules['__main__'].Sort_For_Machine = Sort_For_Machine
+sys.modules['__main__'].Calculate_power_diff = Calculate_power_diff
+sys.modules['__main__'].Sort = Sort
 
-    # Make predictions using the loaded model
-    predictions = model.predict(test_batch)
+model = joblib.load("Isolation_Forest_Model3.joblib")
 
-    return predictions
-# Example usage
-if __name__ == "__main__":
-    # Load the test batch (replace with actual file path)
-    test_batch = pd.read_csv("Data_Processed/test_data.csv")
+columns_to_drop = ["cet_cest_timestamp","area_offices","area_room_1",
+                   "area_room_2","area_room_3","area_room_4","compressor",
+                   "cooling_aggregate","cooling_pumps","dishwasher","ev",
+                   "grid_import","pv_facade","pv_roof","refrigerator","ventilation"]
+normal_column = ["utc_timestamp", "machine_col", "power", "machine_id", "power_diff"]
+training_data = ["utc_timestamp","power_diff"]
 
-    # Get predictions for the test batch
-    predictions = predict_Batch(test_batch)
 
-    # Print the predictions
-    print(predictions)
+Final_piplan = joblib.load("preprocessing_pipeline_new.joblib")
 
-def predict_real_time(new_data):
 
-    model = joblib.load("isolation_forest_model.joblib")
-    prediction = model.predict([new_data])
+def predict_batch(test_batch):
 
-    return prediction
+    if not isinstance(test_batch, pd.DataFrame):
+        if hasattr(test_batch, 'dict'): test_batch = pd.DataFrame(test_batch)
+        elif isinstance(test_batch, dict): test_batch = pd.DataFrame([test_batch])
+        # for Batch inference we genarally expect a list of dicts,
+        # but we can also handle a single dict or a DataFrame directly
+        elif isinstance(test_batch, list): test_batch = pd.DataFrame(test_batch)
+        else: raise ValueError("Input format not supported. Expected: DataFrame, dict, or list of dicts.")
+
+    try :
+       transformed_data = Final_piplan.fit_transform(test_batch)
+    except Exception as e:
+        logger.error(f"Error during pipeline transformation: {str(e)}", exc_info=True)
+        raise RuntimeError(f"Error during pipeline transformation: {str(e)}")
+
+
+    col_names =  training_data + [ 'machine_1', 'machine_2', 'machine_3', 'machine_4', 'machine_5']
+
+
+    transformed_df = pd.DataFrame(transformed_data, columns=col_names)
+    if transformed_data.shape[1] != len(col_names):
+        logger.error(
+            f"Dimension error: Pipeline generated {transformed_data.shape[1]} columns, but expected {len(col_names)}.")
+        raise ValueError(
+            f"Dimension error: Pipeline generated {transformed_data.shape[1]} columns, but expected {len(col_names)}.")
+
+    transformed_df_for_prediction = transformed_df.drop(columns=['utc_timestamp'])
+
+    predictions = model.predict(transformed_df_for_prediction)
+    predictions = (predictions == -1).astype(int)
+
+    final_df = pd.DataFrame()
+    if 'utc_timestamp' in transformed_df.columns:
+        # Si c'est déjà un float/int (Unix timestamp), on convertit en datetime lisible
+        final_df['utc_timestamp'] = pd.to_datetime(transformed_df['utc_timestamp'], unit='s', errors='coerce')
+    else:
+        final_df['utc_timestamp'] = pd.Timestamp.now()  # Valeur par défaut si perdu
+
+
+    final_df['machine_id'] = transformed_df[
+        [col for col in transformed_df.columns if col.startswith('machine_')]].idxmax(axis=1).str.replace(
+        'machine_', '').astype(int)
+
+    final_df['anomaly'] = predictions
+    if 'anomaly' in final_df.columns:
+        final_df['anomaly'] = final_df['anomaly'].astype(int)
+    final_df['utc_timestamp'] = pd.to_datetime(transformed_df['utc_timestamp'], unit='s')
+    final_df['machine_id'] = transformed_df[[col for col in transformed_df.columns if col.startswith('machine_')]].idxmax(axis=1).str.replace('machine_', '').astype(int)
+    final_df['anomaly'] = predictions
+
+    return final_df
+
+
+def predict_real_time2(new_data):
+    try:
+
+        if not isinstance(new_data, pd.DataFrame):
+            if hasattr(new_data, 'dict'):  # Cas Pydantic simple
+                new_data = pd.DataFrame([new_data.dict()])
+            elif isinstance(new_data, dict):  # Cas Dictionnaire
+                new_data = pd.DataFrame([new_data])
+            elif isinstance(new_data, list):  # Cas Liste de Dictionnaires
+                new_data = pd.DataFrame(new_data)
+            else:
+                raise ValueError("Input format not supported. Expected: DataFrame, dict, or list of dicts.")
+
+
+
+        try:
+            transformed_data = Final_piplan.fit_transform(new_data)
+        except Exception as e:
+            raise RuntimeError(f"Error during pipeline transformation: : {str(e)}")
+
+
+        col_names = training_data + ['machine_1', 'machine_2', 'machine_3', 'machine_4', 'machine_5']
+
+        # Verification of the number of columns generated by the pipeline
+        if transformed_data.shape[1] != len(col_names):
+            raise ValueError(
+
+                f"Erreur de dimension : Le pipeline a généré {transformed_data.shape[1]} colonnes, mais {len(col_names)} étaient attendues.")
+
+
+        transformed_df = pd.DataFrame(transformed_data, columns=col_names)
+
+        # drop 'utc_timestamp'
+        if 'utc_timestamp' in transformed_df.columns:
+            features_for_model = transformed_df.drop(columns=['utc_timestamp'])
+        else:
+
+            features_for_model = transformed_df
+
+        try:
+            prediction = model.predict(features_for_model)
+        except Exception as e:
+            raise RuntimeError(f"Error during model prediction: {str(e)}")
+
+        prediction = (prediction == -1).astype(int)
+
+        final_df = pd.DataFrame()
+
+        if 'utc_timestamp' in transformed_df.columns:
+            final_df['utc_timestamp'] = pd.to_datetime(transformed_df['utc_timestamp'], unit='s', errors='coerce')
+        else:
+            final_df['utc_timestamp'] = pd.Timestamp.now()
+
+
+        final_df['machine_id'] = transformed_df[
+            [col for col in transformed_df.columns if col.startswith('machine_')]].idxmax(axis=1).str.replace(
+            'machine_', '').astype(int)
+
+        final_df['anomaly'] =  prediction
+        if 'anomaly' in final_df.columns:
+            final_df['anomaly'] = final_df['anomaly'].astype(int)
+
+
+
+        return final_df
+
+    except Exception as e:
+        # Log l'erreur complète pour le développeur (apparaît dans la console serveur)
+        logger.error(f"CRITICAL ERROR in predict_real_time: {str(e)}", exc_info=True)
+        # Return an error message that can be sent back to the client (sans détails techniques)
+        raise e
