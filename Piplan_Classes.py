@@ -78,3 +78,43 @@ class Parse_data(BaseEstimator, TransformerMixin):
         X = X.copy()
         X['utc_timestamp'] = pd.to_datetime(X['utc_timestamp'], errors='coerce', utc=True)
         return X
+
+
+if __name__ == "__main__":
+    import joblib
+    from sklearn.pipeline import Pipeline
+    from sklearn.compose import ColumnTransformer
+    from sklearn.preprocessing import OneHotEncoder
+    # Define your columns
+    cols_to_drop = ["cet_cest_timestamp", "area_offices", "area_room_1",
+                    "area_room_2", "area_room_3", "area_room_4", "compressor",
+                    "cooling_aggregate", "cooling_pumps", "dishwasher", "ev",
+                    "grid_import", "pv_facade", "pv_roof", "refrigerator", "ventilation"]
+
+    # Build the pipeline
+    First_piplan = Pipeline([
+        ('drop_cols', ColumnDropper(cols_to_drop)),
+        ('parse', Parse_data()),
+        ('melt', Melt_data()),
+        ('drop_na', Drop_na()),
+        ('extract_id', Extract_machine_id()),
+        ('sort_machine', Sort_For_Machine()),
+        ('calc_diff', Calculate_power_diff()),
+        ('sort_final', Sort())
+    ])
+    ct = ColumnTransformer(
+        transformers=[
+            ('passthrough', 'passthrough', ['utc_timestamp', 'power_diff']),
+            ('machine', OneHotEncoder(
+                handle_unknown='ignore', sparse_output=False  # Dense for sanity
+            ), ['machine_id'])
+        ],
+        remainder='drop'
+    )
+
+    Final_piplan = Pipeline([
+        ("first_pipeline", First_piplan),
+        ("column_transformer", ct),
+    ])
+    joblib.dump(Final_piplan, "preprocessing_pipeline_new2.joblib")
+    print("Pipeline saved successfully with clean module references!")

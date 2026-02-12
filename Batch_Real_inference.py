@@ -1,19 +1,16 @@
 import joblib
-from Piplan_Classes import *
-import sys
+import pandas as pd
+import Piplan_Classes
+import __main__
 
-
-
-sys.modules['__main__'].ColumnDropper = ColumnDropper
-sys.modules['__main__'].Parse_data = Parse_data
-sys.modules['__main__'].Melt_data = Melt_data
-sys.modules['__main__'].Drop_na = Drop_na
-sys.modules['__main__'].Extract_machine_id = Extract_machine_id
-sys.modules['__main__'].Sort_For_Machine = Sort_For_Machine
-sys.modules['__main__'].Calculate_power_diff = Calculate_power_diff
-sys.modules['__main__'].Sort = Sort
-
-
+__main__.ColumnDropper = Piplan_Classes.ColumnDropper
+__main__.Parse_data = Piplan_Classes.Parse_data
+__main__.Melt_data = Piplan_Classes.Melt_data
+__main__.Drop_na = Piplan_Classes.Drop_na
+__main__.Extract_machine_id = Piplan_Classes.Extract_machine_id
+__main__.Sort_For_Machine = Piplan_Classes.Sort_For_Machine
+__main__.Calculate_power_diff = Piplan_Classes.Calculate_power_diff
+__main__.Sort = Piplan_Classes.Sort
 
 columns_to_drop = ["cet_cest_timestamp","area_offices","area_room_1",
                    "area_room_2","area_room_3","area_room_4","compressor",
@@ -23,8 +20,9 @@ normal_column = ["utc_timestamp", "machine_col", "power", "machine_id", "power_d
 training_data = ["utc_timestamp","power_diff"]
 
 
+
 model = joblib.load("Isolation_Forest_Model3.joblib")
-Final_piplan = joblib.load("preprocessing_pipeline_new.joblib")
+Final_piplan = joblib.load("preprocessing_pipeline_new2.joblib")
 
 
 def predict_batch(test_batch):

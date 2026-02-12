@@ -1,4 +1,4 @@
- import joblib
+import joblib
 from fastapi import FastAPI, HTTPException
 from typing import List
 from pydantic import BaseModel
@@ -32,7 +32,7 @@ class InputData(BaseModel):
     ventilation: float
 
 model = joblib.load("Isolation_Forest_Model3.joblib")
-Final_piplan = joblib.load("preprocessing_pipeline_new.joblib")
+Final_piplan = joblib.load("preprocessing_pipeline_new2.joblib")
 
 # 2. Batch Prediction Endpoint
 @app.post("/predict_batch")
