@@ -1,3 +1,4 @@
+import joblib
 from fastapi import FastAPI, HTTPException
 from typing import List
 from pydantic import BaseModel
@@ -30,6 +31,8 @@ class InputData(BaseModel):
     refrigerator: float
     ventilation: float
 
+model = joblib.load("Isolation_Forest_Model3.joblib")
+Final_piplan = joblib.load("preprocessing_pipeline_new2.joblib")
 
 # 2. Batch Prediction Endpoint
 @app.post("/predict_batch")
@@ -51,7 +54,6 @@ def run_predict_batch(test_batch: List[InputData]):
 @app.post("/predict_real_time")
 def run_predict_real_time(new_data: InputData):
     try:
-        # 1. Conversion Pydantic -> Dict
         single_data = new_data.model_dump() if hasattr(new_data, 'model_dump') else new_data.dict()
 
         prediction_df = predict_real_time2(single_data)
@@ -63,3 +65,19 @@ def run_predict_real_time(new_data: InputData):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/health")
+def health_check():
+    checkes = {
+        "health": "healthy",
+        "model_loaded": model is not None,
+        "pipeline_loaded": Final_piplan is not None,
+        "version": "1.0"
+    }
+
+    if not checkes["model_loaded"] or not checkes["pipeline_loaded"]:
+        checkes["health"] = "unhealthy"
+        raise HTTPException(status_code=503, detail=checkes)
+
+    return checkes
+
