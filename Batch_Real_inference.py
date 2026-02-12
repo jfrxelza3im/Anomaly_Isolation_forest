@@ -1,11 +1,8 @@
- import joblib
+import joblib
 from Piplan_Classes import *
-import logging
 import sys
 
-# Setup logging configuration
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+
 
 sys.modules['__main__'].ColumnDropper = ColumnDropper
 sys.modules['__main__'].Parse_data = Parse_data
@@ -43,11 +40,6 @@ def predict_batch(test_batch):
     col_names =  training_data + [ 'machine_1', 'machine_2', 'machine_3', 'machine_4', 'machine_5']
 
     transformed_df = pd.DataFrame(transformed_data, columns=col_names)
-    if transformed_data.shape[1] != len(col_names):
-        logger.error(
-            f"Dimension error: Pipeline generated {transformed_data.shape[1]} columns, but expected {len(col_names)}.")
-        raise ValueError(
-            f"Dimension error: Pipeline generated {transformed_data.shape[1]} columns, but expected {len(col_names)}.")
 
     transformed_df_for_prediction = transformed_df.drop(columns=['utc_timestamp'])
 
